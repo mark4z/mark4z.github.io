@@ -13,7 +13,7 @@ timezone: ''
 
 # URL
 ## If your site is put in a subdirectory, set url as 'http://example.com/child' and root as '/child/'
-url: http://c.anymre.top
+url: https://mark4z.github.io
 root: /
 permalink: :year/:month/:day/:title/
 permalink_defaults:
