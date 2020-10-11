@@ -98,7 +98,8 @@ ignore:
 # Extensions
 ## Plugins: https://hexo.io/plugins/
 ## Themes: https://hexo.io/themes/
-theme: minima
+remote_theme: Molunerfinn/hexo-theme-melody
+
 
 # Deployment
 ## Docs: https://hexo.io/docs/one-command-deployment
