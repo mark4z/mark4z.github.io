@@ -98,7 +98,7 @@ ignore:
 # Extensions
 ## Plugins: https://hexo.io/plugins/
 ## Themes: https://hexo.io/themes/
-remote_theme: Molunerfinn/hexo-theme-melody
+theme: melody
 
 
 # Deployment
