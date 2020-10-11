@@ -154,7 +154,7 @@ post_copyright:
 
 # Please see doc for more details: https://molunerfinn.com/hexo-theme-melody-doc/theme-config.html#auto-excerpt
 auto_excerpt:
- enable: false
+ enable: true
  length: 150
 
 # slide
