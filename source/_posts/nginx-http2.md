@@ -81,7 +81,7 @@ HTTP/2 是 HTTP 协议自 1999 年 HTTP 1.1 发布后的首个更新，主要基
 通过对上游API的压测，发现从API Gateway->POD这一侧压测接口正常，但是从Reverse Proxy->API Gateway->POD这一侧压测接口就会出现大量Stream
 Reset Exception，这也就是为什么在上游API的同学看来，他们的接口一切正常，而我们却发现接口的响应时间超过500ms的原因。
 
-在此我准备了最小复现问题的demo，可以直接clone下来：
+在此我准备了最小复现问题的demo，可以直接clone下来。
 ```bash
 git clone https://github.com/mark4z/rpc-benchmark.git
 cd rpc-benchmark
@@ -140,8 +140,35 @@ Response time histogram:
 Error distribution:
   [4117]	Post "https://localhost:9998/delay": http2: Transport: cannot retry err [http2: Transport received Server's graceful shutdown GOAWAY] after Request.Body was written; define Request.GetBody to avoid this error
 ```
-我们成功复现了问题，可以看到在用nginx作为反向代理时，http2的性能表现居然比http1.1差了一倍！！！同时，在压测过程中，也出现了上文提到的Stream Reset Exception，即服务端发送了GOAWAY主动关闭了连接，从压测结果来看也能看到New connection:	4495，是http1.1的十倍有余。
+我们成功复现了问题，可以看到在用nginx作为反向代理时，http2的性能表现居然比http1.1差了一倍！！！同时，在压测过程中，也出现了上文提到的Stream Reset Exception，即服务端发送了GOAWAY主动关闭了连接，从压测结果来看也能看到New connection:	4495，是http1.1的数十倍。
 众所周知，创建https连接是非常耗时的，那么问题就在这里了。
+
+进一步分析，我们来打开hey的debug模式，看看具体的请求过程：
+```bash
+export GODEBUG=http2debug=2
+hey -c 1 -n 1001 -m POST -d "0" -h2  https://localhost:9998/delay
+````
+下面是hey的debug日志,我们来逐行分析一下：
+```log
+//stream=1999 每个stream都有一个唯一的id，对应一次请求与响应，由于客户端发送的stream id只能是奇数，所以这里代表第1000个请求
+2023/04/02 20:42:25 http2: Framer 0x1400021a0e0: wrote DATA flags=END_STREAM stream=1999 len=1 data="0"
+...
+2023/04/02 20:42:25 http2: Framer 0x1400021a0e0: read HEADERS flags=END_STREAM|END_HEADERS stream=1999 len=39
+...
+2023/04/02 20:42:25 http2: Transport received HEADERS flags=END_STREAM|END_HEADERS stream=1999 len=39
+//这里hey尝试下次请求时，发现连接池中没有可用的连接了，所以创建了一个新的连接
+2023/04/02 20:42:25 http2: Transport failed to get client conn for localhost:9998: http2: no cached connection was available
+2023/04/02 20:42:25 http2: Transport failed to get client conn for localhost:9998: http2: no cached connection was available
+2023/04/02 20:42:25 http2: Transport readFrame error on conn 0x1400022a000: (*errors.errorString) EOF
+2023/04/02 20:42:25 http2: Transport creating client conn 0x140001ac180 to [::1]:9998
+...
+2023/04/02 20:42:25 http2: Transport encoding header ":path" = "/delay"
+2023/04/02 20:42:25 http2: Transport encoding header ":scheme" = "https"
+// 这里的stream 1，也就是新连接的第一个请求
+2023/04/02 20:42:25 http2: Framer 0x1400021a2a0: wrote HEADERS flags=END_HEADERS stream=1 len=47
+...
+```
+从日志中可以看出，当hey发送了1000个请求后，服务端主动关闭了连接。
 
 ## NGINX的参数问题
 通过上文我们发现了NGINX作为上游频繁关闭http2的连接，导致了性能严重下降，NGINX有一个默认配置，在一条连接上最多可以进行1000个请求。
