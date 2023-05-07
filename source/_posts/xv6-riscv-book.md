@@ -10,18 +10,14 @@ tags: [os, clang, learn]
 OSTEP中提到了一个叫xv6的小型unix-like os，于是机缘巧合，发现了MIT的6.828课程，在此留存一下xv6的讲义和一些随想。
 `
 
-`
-一些有用的link：
-MIT6.828: https://pdos.csail.mit.edu/6.828/2022/schedule.html
 
-中文视频课程：https://www.bilibili.com/video/BV19k4y1C7kA/
-
-课程文字版：https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/
-
-xv6中文讲义原版：https://github.com/FrankZn/xv6-riscv-book-Chinese
-
+#### 一些有用的link：
+[MIT6.828](https://pdos.csail.mit.edu/6.828/2022/schedule.html)
+[中文视频课程](https://www.bilibili.com/video/BV19k4y1C7kA/)
+[课程文字版](https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/)
+[xv6中文讲义原版](https://github.com/FrankZn/xv6-riscv-book-Chinese)
 注：以下讲义内容来自于上述文档xv6中文讲义原版，侵联删。
-`
+
 ## 第一章：操作系统接口
 
 操作系统的工作是将计算机的资源在多个程序间共享，并且给程序提供一系列比硬件本身支持的更有用的服务。操作系统管理并抽象底层硬件，因此，举例来说，一个文字处理程序不需要去关心自己使用的是何种硬盘。操作系统还对硬件进行多路复用，使多个程序可以同时运行的(或者看起来是同时运行)。最后，操作系统为程序提供了一种可控的交互方式，使得多个程序可以共享数据，共同工作。
