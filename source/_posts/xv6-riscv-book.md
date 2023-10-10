@@ -16,6 +16,7 @@ OSTEP中提到了一个叫xv6的小型unix-like os，于是机缘巧合，发现
 [中文视频课程](https://www.bilibili.com/video/BV19k4y1C7kA/)
 [课程文字版](https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/)
 [xv6中文讲义原版](https://github.com/FrankZn/xv6-riscv-book-Chinese)
+[risc-v pri isa](/html/priv-isa-asciidoc.html)
 注：以下讲义内容来自于上述文档xv6中文讲义原版，侵联删。
 
 ## 第一章：操作系统接口
