@@ -6,7 +6,6 @@ tags: [os, linux, cpu, thread, process, lwp]
 ``
 
 Linux 0号进程fork 1号进程kernel_init，然后exec init process最终跳转回用户空间的全过程。
-timer interrupt实现切换进程待补充。
 
 ```c
 _start(head.S)
@@ -67,3 +66,51 @@ restore_all:
     REG_L x2,  PT_SP(sp)
     sret
 ```
+
+
+timer interrupt 进程切换
+
+```c
+handle_exception(arch/riscv/kernel/entry.S)
+	la ra, ret_from_exception
+
+	/* Handle interrupts */
+	move a0, sp /* pt_regs */
+	la a1, generic_handle_arch_irq
+	jr a1
+generic_handle_arch_irq()(kernel/irq/handle.c)
+    riscv_intc_irq()(drivers/irqchip/irq-riscv-intc.c)
+        generic_handle_domain_irq()(kernel/irq/irqdesc.c)
+            handle_irq_desc()(kernel/irq/irqdesc.c)
+                generic_handle_irq_desc(include/linux/irqdesc.h)
+                    riscv_timer_interrupt()(drivers/clocksource/timer-riscv.c)
+                    evdev->event_handler(evdev);
+                        tick_handle_periodic()(kernel/time/tick-common.c)
+                            tick_periodic()()(kernel/time/tick-common.c)
+                                update_process_times()(kernel/time/timer.c)
+                                    scheduler_tick()(kernel/sched/core.c)
+                                        curr->sched_class->task_tick(rq, curr, 0);
+                                        task_tick_fair()(kernel/sched/fair.c)
+                                        /*
+                                         * Update run-time statistics of the 'current'.
+                                         */
+                                        update_curr(cfs_rq);
+                                        if (cfs_rq->nr_running > 1)
+                                            check_preempt_tick(cfs_rq, curr);
+                                            check_preempt_tick()(kernel/sched/fair.c)
+                                                resched_curr()(kernel/sched/core.c)
+                                                    set_tsk_need_resched()(kernel/sched/core.c)
+                                                        set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
+ret_from_exception(arch/riscv/kernel/entry.S)
+resume_userspace(arch/riscv/kernel/entry.S)
+    andi s1, s0, _TIF_WORK_MASK
+    bnez s1, work_pending
+work_pending(arch/riscv/kernel/entry.S)   
+	/* Enter slow path for supplementary processing */
+	la ra, ret_from_exception
+	andi s1, s0, _TIF_NEED_RESCHED
+	bnez s1, work_resched 
+work_resched(arch/riscv/kernel/entry.S)   
+	tail schedule
+```
+假设另一个进程在运行时，timer interrupt发生，进程切换回init进程，然后会切换回__switch_to，至此，进程调度变成一个死循环。
