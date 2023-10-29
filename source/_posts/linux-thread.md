@@ -8,54 +8,54 @@ tags: [os, linux, cpu, thread, process, lwp]
 Linux 0号进程fork 1号进程kernel_init，然后exec init process最终跳转回用户空间的全过程。
 
 ```c
-_start(head.S)
-_start_kernel(head.S)
-start_kernel()(main.c)        
-    arch_call_rest_init()(main.c)
-        rest_init()(main.c)
-            pid = user_mode_thread(kernel_init, NULL, CLONE_FS);(main.c)
-                kernel_clone()(fork.c)
-                    copy_process()(fork.c)
-                        copy_thread()(process.c)
-                            p->thread.ra = (unsigned long)ret_from_kernel_thread;(process.c)
+_start(arch/riscv/kernel/head.S)
+_start_kernel(arch/riscv/kernel/head.S)
+start_kernel()(init/main.c)        
+    arch_call_rest_init()(init/main.c)
+        rest_init()(init/main.c)
+            pid = user_mode_thread(kernel_init, NULL, CLONE_FS);(init/main.c)
+                kernel_clone()(kernel/fork.c)
+                    copy_process()(kernel/fork.c)
+                        copy_thread()(arch/riscv/kernel/process.c)
+                            p->thread.ra = (unsigned long)ret_from_kernel_thread;(arch/riscv/kernel/process.c)
                             p->thread.s[0] = (unsigned long)args->fn;
                             p->thread.s[1] = (unsigned long)args->fn_arg;
-                    wake_up_new_task()(core.c)
-                        activate_task()(core.c)
-                            enqueue_task()(core.c)
+                    wake_up_new_task()(kernel/sched/core.c)
+                        activate_task()(kernel/sched/core.c)
+                            enqueue_task()(kernel/sched/core.c)
                                 p->sched_class->enqueue_task(rq, p, flags);
-            schedule_preempt_disabled()(core.c)
-                schedule()(core.c)
-                    __schedule()(core.c)
-                        next = pick_next_task(rq, prev, &rf);(core.c)
-                            context_switch()(core.c)
-                                switch_to()(switch_to.h)
-                                    __switch_to(entry.S)
+            schedule_preempt_disabled()(kernel/sched/core.c)
+                schedule()(kernel/sched/core.c)
+                    __schedule()(kernel/sched/core.c)
+                        next = pick_next_task(rq, prev, &rf);(kernel/sched/core.c)
+                            context_switch()(kernel/sched/core.c)
+                                switch_to()(arch/riscv/include/asm/switch_to.h)
+                                    __switch_to(arch/riscv/kernel/entry.S)
                                         li    a4,  TASK_THREAD_RA
                                         add   a4, a1, a4
                                         REG_L ra,  TASK_THREAD_RA_RA(a4)
                                         REG_L s0,  TASK_THREAD_S0_RA(a4)
                                         REG_L s1,  TASK_THREAD_S1_RA(a4)
                                         ret
-ret_from_kernel_thread(entry.S)
-    schedule_tail()(core.c)
+ret_from_kernel_thread(arch/riscv/kernel/entry.S)
+    schedule_tail()(kernel/sched/core.c)
     /* Call fn(arg) */
     la ra, ret_from_exception
     move a0, s1
     jr s0
-kernel_init()(main.c)
-    try_to_run_init_process()(main.c)
-        run_init_process()(main.c)
-            kernel_execve()(exec.c)
-                bprm_execve()(exec.c)
-                    exec_binprm()(exec.c)
-                        search_binary_handler()(exec.c)
-                            retval = fmt->load_binary(bprm);(exec.c)
-                                load_elf_binary()(binfmt_elf).c
-                                    start_thread()(process.c)
+kernel_init()(init/main.c)
+    try_to_run_init_process()(init/main.c)
+        run_init_process()(init/main.c)
+            kernel_execve()(fs/exec.c)
+                bprm_execve()(fs/exec.c)
+                    exec_binprm()(fs/exec.c)
+                        search_binary_handler()(fs/exec.c)
+                            retval = fmt->load_binary(bprm);(fs/exec.c)
+                                load_elf_binary()(fs/binfmt_elf.c)
+                                    start_thread()(arch/riscv/kernel/process.c)
                                         regs->epc = pc;
                                         regs->sp = sp;
-ret_from_exception(entry.S)    
+ret_from_exception(arch/riscv/kernel/entry.S)    
 resume_userspace
 restore_all:
 	REG_L  a2, PT_EPC(sp)
