@@ -97,6 +97,17 @@ generic_handle_arch_irq()(kernel/irq/handle.c)
                                         update_curr(cfs_rq);
                                         if (cfs_rq->nr_running > 1)
                                             check_preempt_tick(cfs_rq, curr);
+                                            	ideal_runtime = sched_slice(cfs_rq, curr);
+                                                delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
+                                                if (delta_exec > ideal_runtime) {
+                                                    resched_curr(rq_of(cfs_rq));
+                                                    /*
+                                                     * The current task ran long enough, ensure it doesn't get
+                                                     * re-elected due to buddy favours.
+                                                     */
+                                                    clear_buddies(cfs_rq, curr);
+                                                    return;
+                                                }
                                             check_preempt_tick()(kernel/sched/fair.c)
                                                 resched_curr()(kernel/sched/core.c)
                                                     set_tsk_need_resched()(kernel/sched/core.c)
