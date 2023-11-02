@@ -12,7 +12,7 @@ OSTEP中提到了一个叫xv6的小型unix-like os，于是机缘巧合，发现
 
 
 #### 一些有用的link：
-[MIT6.828](https://pdos.csail.mit.edu/6.828/2022/schedule.html)
+[MIT6.S081](https://pdos.csail.mit.edu/6.S081/2022/tools.html)
 [中文视频课程](https://www.bilibili.com/video/BV19k4y1C7kA/)
 [课程文字版](https://mit-public-courses-cn-translatio.gitbook.io/mit6-s081/)
 [xv6中文讲义原版](https://github.com/FrankZn/xv6-riscv-book-Chinese)

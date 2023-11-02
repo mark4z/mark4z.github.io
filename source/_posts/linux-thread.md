@@ -1,9 +1,28 @@
 ---
-title: Linux v5.19 进程调度源码解读
+title: Linux v5.19 risc-v 进程调度汇编级源码解读
 date: 2023-05-05 23:29:44
 tags: [os, linux, cpu, thread, process, lwp]
 ---
-``
+`
+不知不觉毕业已经四年有余。一直在做Java，做的再好终归是Spring上浅浅的一层苔藓，一刮就没了。
+偶尔心血来潮看一眼《深入理解JVM虚拟机》也如过眼云烟，也始终不得要领，书籍繁多，却也没有一本是为门外汉准备的。
+国内的书籍有种不鼓励自学的傲慢，喜欢假定读者已经有了一定的基础，可惜我是没有的，如果有的话我也不会再去看那本书了。
+转而去读《OSTEP》，似进入桃花源的一小口，打开了[MIT6.S081](https://pdos.csail.mit.edu/6.S081/2022/tools.html)的大门。
+听课的这段时间简直是工作后最快乐的时光，两位教授带领你把CPU/MM/FS层层剖开，边学边觉得知识从一个个孤岛融汇起来，知识在经脉里流淌。
+终归，告别XV6之后还是要来Linux朝圣。
+`
+
+## 前言
+本文并不是一篇Linux进程入门教程，建议按照顺序掌握以下知识后参考本文理解Linux源码。
+- [x] Clang基础
+- [x] OSTEP 操作系统导论 - 这绝对是一本好书，能让你低成本的思考操作系统的本质
+- [x] [MIT6.S081](https://pdos.csail.mit.edu/6.S081/2022/tools.html) - MIT的本科操作系统课程，难度颇高，笔者花了两三个月的时间但很值得。
+- [x] （可选）[Linux内核设计与实现](https://book.douban.com/subject/6097773/) - 本书是Linux内核的入门书籍，但是并算不上入门，对笔者来说有了6.S081的基础看起来仍旧很吃力。
+- [x] [深入理解Linux进程管理(1.0)](https://blog.csdn.net/orangeboyye/article/details/125793172) - 开始入门linux
+- [x] [深入理解Linux进程调度(0.4)](https://blog.csdn.net/orangeboyye/article/details/126109076) - 更具体的Linux进程调度，配合本文食用更佳。
+
+## 进程调度的本质
+
 
 Linux 0号进程fork 1号进程kernel_init，然后exec init process最终跳转回用户空间的全过程。
 
