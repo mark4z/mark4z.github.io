@@ -1,5 +1,5 @@
 ---
-title: Linux v5.19 risc-v 进程调度汇编级源码解读
+title: Linux v5.19 risc-v 进程/线程调度汇编级源码解读
 date: 2023-05-05 23:29:44
 tags: [os, linux, cpu, thread, process, lwp]
 ---
@@ -21,8 +21,12 @@ tags: [os, linux, cpu, thread, process, lwp]
 - [x] [深入理解Linux进程管理(1.0)](https://blog.csdn.net/orangeboyye/article/details/125793172) - 开始入门linux
 - [x] [深入理解Linux进程调度(0.4)](https://blog.csdn.net/orangeboyye/article/details/126109076) - 更具体的Linux进程调度，配合本文食用更佳。
 
-## 进程调度的本质
+## 线程调度的本质
 
+对于Linux来说，与其说是进程调度，不如说是线程调度。本文会介绍Linux启动流程中与进程调度相关的准备工作以及线程切换的核心流程。
+
+仅对于进程/线程来说，Linux的运行方式大约是这样：
+![](1.1.jpeg)
 
 Linux 0号进程fork 1号进程kernel_init，然后exec init process最终跳转回用户空间的全过程。
 
@@ -86,7 +90,6 @@ restore_all:
     sret
 ```
 
-
 timer interrupt 进程切换
 
 ```c
@@ -143,4 +146,5 @@ work_pending(arch/riscv/kernel/entry.S)
 work_resched(arch/riscv/kernel/entry.S)   
 	tail schedule
 ```
+
 假设另一个进程在运行时，timer interrupt发生，进程切换回init进程，然后会切换回__switch_to，至此，进程调度变成一个死循环。
