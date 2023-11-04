@@ -25,12 +25,22 @@ tags: [os, linux, cpu, thread, process, lwp]
 
 对于Linux来说，与其说是进程调度，不如说是线程调度。本文会介绍Linux启动流程中与进程调度相关的准备工作以及线程切换的核心流程。
 
-仅对于进程/线程来说，Linux的运行方式大约是这样：
-![](1.1.jpeg)
+以一个简化的模型来看，linux运行在一个头尾相接的task数组的循环中。
+实际上每个CPU core在work queue中选取一个task（即线程）运行，当task运行完毕或者发生中断（时间片用完）时，重新选取下一个task运行。
+如何选取下一个task，就是调度算法（例如CFS）。
+![](core.jpeg)
 
+### 1号进程
+在Linux中，0号进程和1号进程是两个非常重要的系统进程，它们扮演着系统启动和初始化的关键角色。
+
+0号进程：0号进程通常被称为"init"或是系统初始化进程。它是系统启动时的第一个用户空间进程，负责初始化系统环境、启动其他系统进程，并处理系统的关机和重启。在传统的SysV初始化系统中，init是0号进程，而在现代的初始化系统（如systemd）中，init通常是一个符号链接，指向真正的初始化程序（例如/systemd）。0号进程的进程ID（PID）通常为1。  
+
+1号进程：1号进程通常是指第一个用户进程，也被称为"kernel"或"swapper"。它是内核的一部分，不是一个用户空间进程。1号进程负责执行内核初始化的关键任务，然后启动用户空间的init进程（0号进程）。一旦0号进程（init）启动后，1号进程就不再扮演重要角色。1号进程的PID通常为1。   
+
+这两个进程是系统初始化的核心组成部分，它们一起协同工作，确保系统能够正常启动，并开始执行用户空间的进程。虽然现代Linux发行版通常使用systemd或其他初始化系统来管理系统启动，但这两个进程的概念仍然存在，作为Linux系统的核心元素。
 Linux 0号进程fork 1号进程kernel_init，然后exec init process最终跳转回用户空间的全过程。
 
-```c
+```
 _start(arch/riscv/kernel/head.S)
 _start_kernel(arch/riscv/kernel/head.S)
 start_kernel()(init/main.c)        
@@ -90,7 +100,7 @@ restore_all:
     sret
 ```
 
-timer interrupt 进程切换
+### timer interrupt 进程切换
 
 ```c
 handle_exception(arch/riscv/kernel/entry.S)
