@@ -33,23 +33,42 @@ tags: [os, linux, cpu, thread, process, lwp]
 ### 1号进程
 在Linux中，0号进程和1号进程是两个非常重要的系统进程，它们扮演着系统启动和初始化的关键角色。
 
-0号进程：0号进程通常被称为"init"或是系统初始化进程。它是系统启动时的第一个用户空间进程，负责初始化系统环境、启动其他系统进程，并处理系统的关机和重启。在传统的SysV初始化系统中，init是0号进程，而在现代的初始化系统（如systemd）中，init通常是一个符号链接，指向真正的初始化程序（例如/systemd）。0号进程的进程ID（PID）通常为1。  
+0号进程，也被称为调度进程或者Swapper进程，它是系统启动时创建的第一个进程。它的主要任务是创建1号进程，并在系统运行过程中负责处理僵尸进程。
 
-1号进程：1号进程通常是指第一个用户进程，也被称为"kernel"或"swapper"。它是内核的一部分，不是一个用户空间进程。1号进程负责执行内核初始化的关键任务，然后启动用户空间的init进程（0号进程）。一旦0号进程（init）启动后，1号进程就不再扮演重要角色。1号进程的PID通常为1。   
+1号进程，也被称为 init 进程，是系统启动后创建的第一个用户空间进程。它负责启动和监控所有其他的系统进程。如果一个进程的父进程结束，这个进程会被1号进程接管。因此，1号进程通常被视为所有进程的“父进程”。
 
 这两个进程是系统初始化的核心组成部分，它们一起协同工作，确保系统能够正常启动，并开始执行用户空间的进程。虽然现代Linux发行版通常使用systemd或其他初始化系统来管理系统启动，但这两个进程的概念仍然存在，作为Linux系统的核心元素。
 
 ### 启动第一个用户空间程序
-Linux 0号进程fork 1号进程kernel_init，然后exec init process最终跳转回用户空间的全过程。
-
-```
+Linux在经过一系列的准备后，会fork出第一个用户空间进程，也就是1号进程，然后调用execve加载第一个用户空间程序，这个程序通常是/bin/init，也就是systemd。
+分为以下几个步骤： 
+#### 准备C环境，进入start_kernel()函数
+```asm
 _start(arch/riscv/kernel/head.S)
+	/* jump to start kernel */
+	j _start_kernel
 _start_kernel(arch/riscv/kernel/head.S)
-start_kernel()(init/main.c)        
+	/* Restore C environment */
+	la tp, init_task 
+	la sp, init_thread_union + THREAD_SIZE //初始化栈帧
+
+	/* Start the kernel */
+	call soc_early_init
+	tail start_kernel //进入C环境
+```
+
+#### 进入start_kernel()函数，做一系列准备后创建1号进程
+```c
+start_kernel()(init/main.c)  
+    /* Do the rest non-__init'ed, we're now alive */      
     arch_call_rest_init()(init/main.c)
         rest_init()(init/main.c)
+            // fork出1号进程，指定fn为kernel_init(),kernel_init()会调用execve加载第一个用户空间程序init
             pid = user_mode_thread(kernel_init, NULL, CLONE_FS);(init/main.c)
                 kernel_clone()(kernel/fork.c)
+                    // 类似于xv6的fork_ret，在这里会提前把ret_from_kernel_thread放到task.thread.ra中
+                    // 同时把kernel_init()放到task.thread.s0中。
+                    // 在这里的p->thread是一个类似于xv6的trapframe，保存了进程的上下文信息。
                     copy_process()(kernel/fork.c)
                         copy_thread()(arch/riscv/kernel/process.c)
                             p->thread.ra = (unsigned long)ret_from_kernel_thread;(arch/riscv/kernel/process.c)
