@@ -25,10 +25,19 @@ tags: [os, linux, cpu, thread, process, lwp]
 
 对于Linux来说，与其说是进程调度，不如说是线程调度。本文会介绍Linux启动流程中与进程调度相关的准备工作以及线程切换的核心流程。
 
-以一个简化的模型来看，linux运行在一个头尾相接的task数组的循环中。
-实际上每个CPU core在work queue中选取一个task（即线程）运行，当task运行完毕或者发生中断（时间片用完）时，重新选取下一个task运行。
-如何选取下一个task，就是调度算法（例如CFS）。
-![](core.jpeg)
+以一个简化的模型来看，linux运行在一个头尾相接的task数组的循环中。 当task运行完毕或者发生中断（时间片用完）时，重新选取下一个task运行。 如何选取下一个task，就是调度算法（例如CFS）。
+
+从用户空间进程A的角度来看，自身一直在运行，但它运行在如下的循环中：
+1. 运行
+2. 发生时间中断，进入内核态并执行schedule()
+3. 回到1
+
+然而，实际的魔法就发生在switch_to这里。从进程A的角度来看，执行了switch_to之后返回用户空间继续执行，好像什么都没有发生。
+
+但从CPU的角度看，schedule()的前半部分发生在进程A的内核空间，执行了switch_to之后的后半部分发生在进程B的内核空间，然后在进程B的内核空间下，schedule()的后半部分被执行。
+
+借由switch_to完成了一次偷天换日！这就是线程调度的本质。
+![](thread_switch.png)
 
 ### 1号进程
 在Linux中，0号进程和1号进程是两个非常重要的系统进程，它们扮演着系统启动和初始化的关键角色。
@@ -104,9 +113,20 @@ start_kernel()(init/main.c)
                                  * case 'prev->active_mm == next->mm' through
                                  * finish_task_switch()'s mmdrop().
                                  */
+                                //切换页表
                                 switch_mm_irqs_off(prev->active_mm, next->mm, next);
-                                // 保存Prev的寄存器到thread_info，然后恢复next的寄存器
-                                // 
+                                // 保存Prev的寄存器到task.thread，然后恢复next的寄存器，这里等同于xv6的proc.context，也就是内核线程的context
+                                //    /* CPU-specific state of a task */
+                                //    struct thread_struct {
+                                //        /* Callee-saved registers */
+                                //        unsigned long ra;
+                                //        unsigned long sp;	/* Kernel mode stack */
+                                //        unsigned long s[12];	/* s[0]: frame pointer */
+                                //        struct __riscv_d_ext_state fstate;
+                                //        unsigned long bad_cause;
+                                //    };
+                                // a3 = prev->thread
+                                // a4 = next->thread
                                 switch_to()(arch/riscv/include/asm/switch_to.h)
                                     __switch_to(arch/riscv/kernel/entry.S)
                                         /* Save context into prev->thread */
@@ -119,23 +139,27 @@ start_kernel()(init/main.c)
                                         REG_S s1,  TASK_THREAD_S1_RA(a3)
                                         ...
                                         /* Restore context from next->thread */
-                                        REG_L ra,  TASK_THREAD_RA_RA(a4)
-                                        REG_L sp,  TASK_THREAD_SP_RA(a4)
-                                        REG_L s0,  TASK_THREAD_S0_RA(a4)
-                                        REG_L s1,  TASK_THREAD_S1_RA(a4)
+                                        REG_L ra,  TASK_THREAD_RA_RA(a4) //关键点，恢复next的ra，即ret_from_kernel_thread
+                                        REG_L sp,  TASK_THREAD_SP_RA(a4) //恢复栈帧
+                                        REG_L s0,  TASK_THREAD_S0_RA(a4) //恢复next的s0，即kernel_init()
+                                        REG_L s1,  TASK_THREAD_S1_RA(a4) //恢复next的s1，即kernel_init()的args
                                         ...
                                         /* The offset of thread_info in task_struct is zero. */
                                         move tp, a1
-                                        ret
+                                        ret // 跳转至ret_from_kernel_thread
+```
+执行schedule_tail()，保存prev的相关状态，并跳转至kernel_init()。
+```asm
 ret_from_kernel_thread(arch/riscv/kernel/entry.S)
     schedule_tail()(kernel/sched/core.c)
     /* Call fn(arg) */
     la ra, ret_from_exception
-    move a0, s1
-    jr s0
+    move a0, s1 // a0 = args->fn_arg
+    jr s0       // s0 = args->fn = kernel_init() 跳转至kernel_init()
 ```
 
 #### 加载INIT程序
+kernel_execve()会调用load_elf_binary()加载init程序，然后调用start_thread()启动init程序。
 ```c
 kernel_init()(init/main.c)
     try_to_run_init_process()(init/main.c)
@@ -146,22 +170,47 @@ kernel_init()(init/main.c)
                         search_binary_handler()(fs/exec.c)
                             retval = fmt->load_binary(bprm);(fs/exec.c)
                                 load_elf_binary()(fs/binfmt_elf.c)
-                                    start_thread()(arch/riscv/kernel/process.c)
-                                        regs->epc = pc;
-                                        regs->sp = sp;
+                                    //这里保存了init程序的用户空间的寄存器，等同于xv6的trapframe
+                                    struct pt_regs *regs = current_pt_regs();
+                                    // elf_entry是init程序的入口地址，即init程序的main函数。
+                                	/* everything is now ready... get the userspace context ready to roll */
+                                    START_THREAD(elf_ex, regs, elf_entry, bprm->p);
+                                        regs->epc = pc;  // 设置epc为入口地址
+                                        regs->sp = sp;   // 初始化栈帧
+```
+#### 回到用户空间
+在ret_from_kernel_thread中执行kernel_init()前，已经设置了ra = ret_from_exception，
+因此kernel_init()执行完毕后会跳转至ret_from_exception，然后执行resume_userspace()，最后执行sret回到用户空间。
+至此，我们就真正开始运行1号进程init啦。
+```c
+```asm
 ret_from_exception(arch/riscv/kernel/entry.S)    
-resume_userspace
+// kernel_init()执行完毕后会跳转至此，此时s1不等于0，因此会继续运行到restore_all
+resume_userspace: 
+    /* Interrupts must be disabled here so flags are checked atomically */
+    REG_L s0, TASK_TI_FLAGS(tp) // current_thread_info->flags
+    andi s1, s0, _TIF_WORK_MASK
+    bnez s1, work_pending
+// 从task_struct.pt_regs中恢复所有的寄存器
 restore_all:
-	REG_L  a2, PT_EPC(sp)
+	REG_L a0, PT_STATUS(sp)
+
+	REG_L  a2, PT_EPC(sp) // a2 = epc
 	REG_SC x0, a2, PT_EPC(sp)
-    ...
-	csrw CSR_STATUS, a0
-	csrw CSR_EPC, a2
-    REG_L x2,  PT_SP(sp)
-    sret
+
+	csrw CSR_STATUS, a0 
+	csrw CSR_EPC, a2 // 设置epc为init程序的入口地址，这样sret后就会跳转至用户空间init程序的入口地址
+    
+	REG_L x1,  PT_RA(sp) 
+	REG_L x3,  PT_GP(sp)
+	REG_L x4,  PT_TP(sp)
+	...
+
+	REG_L x2,  PT_SP(sp)
+	sret // 回到用户空间
 ```
 
-### timer interrupt 进程切换
+### TODO 进程切换 timer interrupt
 
 ```c
 handle_exception(arch/riscv/kernel/entry.S)
