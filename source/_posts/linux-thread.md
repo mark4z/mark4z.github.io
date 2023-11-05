@@ -68,28 +68,64 @@ start_kernel()(init/main.c)
                 kernel_clone()(kernel/fork.c)
                     // 类似于xv6的fork_ret，在这里会提前把ret_from_kernel_thread放到task.thread.ra中
                     // 同时把kernel_init()放到task.thread.s0中。
-                    // 在这里的p->thread是一个类似于xv6的trapframe，保存了进程的上下文信息。
+                    // 在这里的p->thread是一个类似于xv6的Per-CPU context，不同的是，xv6保存在一个固定大小的数组中，而linux保存在task_struct中。
                     copy_process()(kernel/fork.c)
                         copy_thread()(arch/riscv/kernel/process.c)
                             p->thread.ra = (unsigned long)ret_from_kernel_thread;(arch/riscv/kernel/process.c)
                             p->thread.s[0] = (unsigned long)args->fn;
                             p->thread.s[1] = (unsigned long)args->fn_arg;
+                    // task_struct准备好后，调用wake_up_new_task()将其加入到调度队列中
                     wake_up_new_task()(kernel/sched/core.c)
                         activate_task()(kernel/sched/core.c)
                             enqueue_task()(kernel/sched/core.c)
                                 p->sched_class->enqueue_task(rq, p, flags);
+```
+此时1号进程已经创建好，并且已经入队，其中提前在task_struct中保存了kernel_init()的地址，准备第一次调度。
+
+#### 第一次调度
+```c
+             /*
+             * The boot idle thread must execute schedule()
+             * at least once to get things moving:
+             */
             schedule_preempt_disabled()(kernel/sched/core.c)
+                // 调度器的核心函数，会调用pick_next_task()选取下一个task
                 schedule()(kernel/sched/core.c)
                     __schedule()(kernel/sched/core.c)
+                        // 选取下一个任务，这就是核心的调度算法，默认是CFS
                         next = pick_next_task(rq, prev, &rf);(kernel/sched/core.c)
+                            // 进行线程切换，在这里会先切换页表，也就是修改stap寄存器。switch_mm_irqs_off()会调用switch_mm()
                             context_switch()(kernel/sched/core.c)
+                                 /*
+                                 * sys_membarrier() requires an smp_mb() between setting
+                                 * rq->curr / membarrier_switch_mm() and returning to userspace.
+                                 *
+                                 * The below provides this either through switch_mm(), or in
+                                 * case 'prev->active_mm == next->mm' through
+                                 * finish_task_switch()'s mmdrop().
+                                 */
+                                switch_mm_irqs_off(prev->active_mm, next->mm, next);
+                                // 保存Prev的寄存器到thread_info，然后恢复next的寄存器
+                                // 
                                 switch_to()(arch/riscv/include/asm/switch_to.h)
                                     __switch_to(arch/riscv/kernel/entry.S)
+                                        /* Save context into prev->thread */
                                         li    a4,  TASK_THREAD_RA
+                                        add   a3, a0, a4
                                         add   a4, a1, a4
+                                        REG_S ra,  TASK_THREAD_RA_RA(a3)
+                                        REG_S sp,  TASK_THREAD_SP_RA(a3)
+                                        REG_S s0,  TASK_THREAD_S0_RA(a3)
+                                        REG_S s1,  TASK_THREAD_S1_RA(a3)
+                                        ...
+                                        /* Restore context from next->thread */
                                         REG_L ra,  TASK_THREAD_RA_RA(a4)
+                                        REG_L sp,  TASK_THREAD_SP_RA(a4)
                                         REG_L s0,  TASK_THREAD_S0_RA(a4)
                                         REG_L s1,  TASK_THREAD_S1_RA(a4)
+                                        ...
+                                        /* The offset of thread_info in task_struct is zero. */
+                                        move tp, a1
                                         ret
 ret_from_kernel_thread(arch/riscv/kernel/entry.S)
     schedule_tail()(kernel/sched/core.c)
@@ -97,6 +133,10 @@ ret_from_kernel_thread(arch/riscv/kernel/entry.S)
     la ra, ret_from_exception
     move a0, s1
     jr s0
+```
+
+#### 加载INIT程序
+```c
 kernel_init()(init/main.c)
     try_to_run_init_process()(init/main.c)
         run_init_process()(init/main.c)
