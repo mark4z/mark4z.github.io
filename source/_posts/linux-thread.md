@@ -31,13 +31,13 @@ tags: [os, linux, cpu, thread, process, lwp]
 1. 运行
 2. 发生时间中断，进入内核态并执行schedule()
 3. 回到1
-![](thread_switch_a.png)
+![](thread_switch_a.jpg)
 然而，实际的魔法就发生在switch_to这里。从进程A的角度来看，执行了switch_to之后返回用户空间继续执行，好像什么都没有发生。
 
 但从CPU的角度看，schedule()的前半部分发生在进程A的内核空间，执行了switch_to之后的后半部分发生在进程B的内核空间，然后在进程B的内核空间下，schedule()的后半部分被执行。
 
 借由switch_to完成了一次偷天换日！这就是线程调度的本质。
-![](thread_switch_b.png)
+![](thread_switch_b.jpg)
 
 ### 1号进程
 在Linux中，0号进程和1号进程是两个非常重要的系统进程，它们扮演着系统启动和初始化的关键角色。
