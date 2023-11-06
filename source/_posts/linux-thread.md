@@ -212,16 +212,26 @@ restore_all:
 	sret // 回到用户空间
 ```
 
-### TODO 进程切换 timer interrupt
+### 时钟中断timer interrupt
 
+上一步我们成功启动了第一个用户进程，但什么时候轮到其他进程运行呢？你很难指望一个进程运行一段时间后说：“我运行的够久了，不如yield一下，让别人运行一会儿”。
+
+出于对进程透明（指进程可以完全不需要什么时候自己需要让出CPU）、公平性（指每个进程都有机会运行）的考虑，Linux引入了时钟中断的概念。
+
+每隔一个固定的时间，通常是100HZ/10ms，时钟中断就会发生，这个时候就会触发调度器去检查，哦，这个进程的时间片用完了，设置一个TIF_NEED_RESCHED的Flag，
+接下来中断结束返回用户控件之前检查是否需要调度，如果需要调度，就会调用schedule()，然后进入下一个进程的内核空间，然后再返回用户空间。这样一个完整的进程调度机制就完成了。
 ```c
+// 时钟中断已经提前委托给了handle_exception
 handle_exception(arch/riscv/kernel/entry.S)
 	la ra, ret_from_exception
 
 	/* Handle interrupts */
 	move a0, sp /* pt_regs */
-	la a1, generic_handle_arch_irq
+	la a1, generic_handle_arch_irq //跳转到中断处理函数
 	jr a1
+```
+处理中断，判断进程是否需要调度，这里是CFS的内容不详细讲，推荐去阅读下[深入理解Linux进程调度(0.4)](https://blog.csdn.net/orangeboyye/article/details/126109076) - 更具体的Linux进程调度，配合本文食用更佳。
+```c
 generic_handle_arch_irq()(kernel/irq/handle.c)
     riscv_intc_irq()(drivers/irqchip/irq-riscv-intc.c)
         generic_handle_domain_irq()(kernel/irq/irqdesc.c)
@@ -232,8 +242,8 @@ generic_handle_arch_irq()(kernel/irq/handle.c)
                         tick_handle_periodic()(kernel/time/tick-common.c)
                             tick_periodic()()(kernel/time/tick-common.c)
                                 update_process_times()(kernel/time/timer.c)
-                                    scheduler_tick()(kernel/sched/core.c)
-                                        curr->sched_class->task_tick(rq, curr, 0);
+                                    scheduler_tick()(kernel/sched/core.c)   //调度器的tick函数
+                                        curr->sched_class->task_tick(rq, curr, 0);  //这里调用CFS的task_tick
                                         task_tick_fair()(kernel/sched/fair.c)
                                         /*
                                          * Update run-time statistics of the 'current'.
@@ -243,8 +253,11 @@ generic_handle_arch_irq()(kernel/irq/handle.c)
                                             check_preempt_tick(cfs_rq, curr);
                                             	ideal_runtime = sched_slice(cfs_rq, curr);
                                                 delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
+                                                // 时间片用完，设置TIF_NEED_RESCHED标识
                                                 if (delta_exec > ideal_runtime) {
                                                     resched_curr(rq_of(cfs_rq));
+                                                        set_tsk_need_resched()  (kernel/sched/core.c)
+                                                        set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
                                                     /*
                                                      * The current task ran long enough, ensure it doesn't get
                                                      * re-elected due to buddy favours.
@@ -252,21 +265,23 @@ generic_handle_arch_irq()(kernel/irq/handle.c)
                                                     clear_buddies(cfs_rq, curr);
                                                     return;
                                                 }
-                                            check_preempt_tick()(kernel/sched/fair.c)
-                                                resched_curr()(kernel/sched/core.c)
-                                                    set_tsk_need_resched()(kernel/sched/core.c)
-                                                        set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
+```
+由于在handle_exception已经提前设置了RA，所以中断处理函数返回后会跳转至ret_from_exception，然后执行resume_userspace并检查是否需要调度。
+然后再次回到ret_from_exception，resume_userspace后restore_all，最后执行sret回到用户空间。
+```c
 ret_from_exception(arch/riscv/kernel/entry.S)
+	andi s0, s0, SR_SPP // 之前在用户空间，所以SR_SPP = 1
+	bnez s0, resume_kernel // s0不等于0，所以不会跳转到resume_kernel
 resume_userspace(arch/riscv/kernel/entry.S)
-    andi s1, s0, _TIF_WORK_MASK
-    bnez s1, work_pending
+    andi s1, s0, _TIF_WORK_MASK // 调度器设置了TIF_NEED_RESCHED，所以s1不等于0
+    bnez s1, work_pending // s1不等于0，所以会跳转到work_pending
 work_pending(arch/riscv/kernel/entry.S)   
 	/* Enter slow path for supplementary processing */
-	la ra, ret_from_exception
+	la ra, ret_from_exception // 调度完成后返回ret_from_exception，然后执行resume_userspace()，最后执行sret回到用户空间。
 	andi s1, s0, _TIF_NEED_RESCHED
-	bnez s1, work_resched 
+	bnez s1, work_resched // s1不等于0，跳转到work_resched
 work_resched(arch/riscv/kernel/entry.S)   
-	tail schedule
+	tail schedule //线程调度
 ```
-
-假设另一个进程在运行时，timer interrupt发生，进程切换回init进程，然后会切换回__switch_to，至此，进程调度变成一个死循环。
+时间片用完的进程会在schedule()的switch_to处无限期冰冻，直到下一次调度轮到它，此时该进程会苏醒，调度完成后返回ret_from_exception，然后执行resume_userspace()，最后执行sret回到用户空间。
+此后所有的进程会交叉在switch_to处让出CPU然后一段时间后运行。
