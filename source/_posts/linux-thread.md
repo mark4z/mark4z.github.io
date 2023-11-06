@@ -41,7 +41,7 @@ cover: /images/linux.jpeg
 **借由switch_to完成了一次偷天换日！这就是线程调度的本质。**
 ![](thread_switch_b.jpg)
 
-### 1号进程
+## 1号进程
 在Linux中，0号进程和1号进程是两个非常重要的系统进程，它们扮演着系统启动和初始化的关键角色。
 
 0号进程，也被称为调度进程或者Swapper进程，它是系统启动时创建的第一个进程。它的主要任务是创建1号进程，并在系统运行过程中负责处理僵尸进程。
@@ -68,7 +68,7 @@ _start_kernel(arch/riscv/kernel/head.S)
 	tail start_kernel //进入C环境
 ```
 
-#### 进入start_kernel()函数，做一系列准备后创建1号进程
+### 进入start_kernel()函数，做一系列准备后创建1号进程
 ```c
 start_kernel()(init/main.c)  
     /* Do the rest non-__init'ed, we're now alive */      
@@ -93,7 +93,7 @@ start_kernel()(init/main.c)
 ```
 此时1号进程已经创建好，并且已经入队，其中提前在task_struct中保存了kernel_init()的地址，准备第一次调度。
 
-#### 第一次调度
+### 第一次调度
 ```c
              /*
              * The boot idle thread must execute schedule()
@@ -160,7 +160,7 @@ ret_from_kernel_thread(arch/riscv/kernel/entry.S)
     jr s0       // s0 = args->fn = kernel_init() 跳转至kernel_init()
 ```
 
-#### 加载INIT程序
+### 加载INIT程序
 kernel_execve()会调用load_elf_binary()加载init程序，然后调用start_thread()启动init程序。
 ```c
 kernel_init()(init/main.c)
@@ -180,7 +180,7 @@ kernel_init()(init/main.c)
                                         regs->epc = pc;  // 设置epc为入口地址
                                         regs->sp = sp;   // 初始化栈帧
 ```
-#### 回到用户空间
+### 回到用户空间
 在ret_from_kernel_thread中执行kernel_init()前，已经设置了ra = ret_from_exception，
 因此kernel_init()执行完毕后会跳转至ret_from_exception，然后执行resume_userspace()，最后执行sret回到用户空间。
 至此，我们就真正开始运行1号进程init啦。
@@ -212,7 +212,7 @@ restore_all:
 	sret // 回到用户空间
 ```
 
-### 时钟中断timer interrupt
+## 时钟中断timer interrupt
 
 上一步我们成功启动了第一个用户进程，但什么时候轮到其他进程运行呢？你很难指望一个进程运行一段时间后说：“我运行的够久了，不如yield一下，让别人运行一会儿”。
 
