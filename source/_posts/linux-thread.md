@@ -2,6 +2,7 @@
 title: Linux v5.19 risc-v 进程/线程调度汇编级源码解读
 date: 2023-05-05 23:29:44
 tags: [os, linux, cpu, thread, process, lwp]
+cover: /images/linux.jpeg
 ---
 `
 不知不觉毕业已经四年有余。一直在做Java，做的再好终归是Spring上浅浅的一层苔藓，一刮就没了。
@@ -32,11 +33,12 @@ tags: [os, linux, cpu, thread, process, lwp]
 2. 发生时间中断，进入内核态并执行schedule()
 3. 回到1
 ![](thread_switch_a.jpg)
+
 然而，实际的魔法就发生在switch_to这里。从进程A的角度来看，执行了switch_to之后返回用户空间继续执行，好像什么都没有发生。
 
 但从CPU的角度看，schedule()的前半部分发生在进程A的内核空间，执行了switch_to之后的后半部分发生在进程B的内核空间，然后在进程B的内核空间下，schedule()的后半部分被执行。
 
-借由switch_to完成了一次偷天换日！这就是线程调度的本质。
+**借由switch_to完成了一次偷天换日！这就是线程调度的本质。**
 ![](thread_switch_b.jpg)
 
 ### 1号进程
