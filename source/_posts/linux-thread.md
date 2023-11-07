@@ -53,7 +53,7 @@ cover: /images/linux.jpeg
 ### 启动第一个用户空间程序
 Linux在经过一系列的准备后，会fork出第一个用户空间进程，也就是1号进程，然后调用execve加载第一个用户空间程序，这个程序通常是/bin/init，也就是systemd。
 分为以下几个步骤： 
-#### 准备C环境，进入start_kernel()函数
+### 准备C环境，进入start_kernel()函数
 ```asm
 _start(arch/riscv/kernel/head.S)
 	/* jump to start kernel */
