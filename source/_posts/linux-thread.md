@@ -220,6 +220,43 @@ restore_all:
 
 每隔一个固定的时间，通常是100HZ/10ms，时钟中断就会发生，这个时候就会触发调度器去检查，哦，这个进程的时间片用完了，设置一个TIF_NEED_RESCHED的Flag，
 接下来中断结束返回用户控件之前检查是否需要调度，如果需要调度，就会调用schedule()，然后进入下一个进程的内核空间，然后再返回用户空间。这样一个完整的进程调度机制就完成了。
+
+### 初始化timer
+
+risc-v控制时钟中断只需要用到mtime and mtimecmp两个寄存器，其中mtime是一个实时计数器，以恒定的频率自增(取决于时钟频率，例如1 MHz，那么每秒钟mtime寄存器的值就会增加1000000)。
+mtimecmp则是一个预设的值，当mtime=mtimecmp且MIE中始终中断开启时时会触发一次时钟中断，借由这两个寄存器就可以实现自定义间隔的时钟中断。
+
+```c
+start_kernel()(init/main.c)
+    time_init()(arch/riscv/kernel/time.c)
+    ...
+        tick_setup_device()(kernel/time/tick-common.c)
+             /*
+             * 设置一个周期性的tick
+             * Setup the device for a periodic tick
+             */
+            tick_setup_periodic()(kernel/time/tick-common.c)
+                clockevents_program_event()(kernel/time/clockevents.c)
+                    riscv_clock_next_event()(drivers/clocksource/timer-riscv.c)
+                        {
+                        //开启始终中断
+                        csr_set(CSR_IE, IE_TIE);
+                        //通过SBI设置mtimecmp，引发第一次tick
+                        sbi_set_timer(get_cycles64() + delta);
+                        return 0;
+                        }
+}
+```
+
+### 发生中断
+
+初始化timer后会触发一次中断，进入handle_exception处理。然后在中断处理中设置mtimecmp以触发下一次中断。
+
+
+实际上timer仅在M模式下可用，时钟中断是通过代理的形式委托给S模式。 通过qemu启动时，opensbi已经设置了MIDELEG，其中第六位代表时钟中断。
+Boot HART MIDELEG         : 0x0000000000000222
+Boot HART MEDELEG         : 0x000000000000b109
+
 ```c
 // 时钟中断已经提前委托给了handle_exception
 handle_exception(arch/riscv/kernel/entry.S)
@@ -238,6 +275,15 @@ generic_handle_arch_irq()(kernel/irq/handle.c)
             handle_irq_desc()(kernel/irq/irqdesc.c)
                 generic_handle_irq_desc(include/linux/irqdesc.h)
                     riscv_timer_interrupt()(drivers/clocksource/timer-riscv.c)
+                        clockevents_program_event()(kernel/time/clockevents.c)
+                             /*
+                             * Setup the next period for devices, which do not have
+                             * periodic mode:
+                             * 其中TICK_NSEC=((NSEC_PER_SEC+HZ/2)/HZ)
+                             */
+                            next = ktime_add_ns(next, TICK_NSEC);
+                            //设置下一次tick的时间
+                            riscv_clock_next_event()(drivers/clocksource/timer-riscv.c)
                     evdev->event_handler(evdev);
                         tick_handle_periodic()(kernel/time/tick-common.c)
                             tick_periodic()()(kernel/time/tick-common.c)
