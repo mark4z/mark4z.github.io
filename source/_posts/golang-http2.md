@@ -40,9 +40,11 @@ serverHandler{c.server}.ServeHTTP(w, w.req)
 	//read body and handle
 	io.readAll(req.Body)
 	writer.Write([]byte("Hello World"))
-// write response
+        w.WriteHeader(StatusOK)
+		// write response body
+		w.w.Write(dataB)
+// flush response
 w.finishRequest()
-    w.WriteHeader(StatusOK)
     w.w.Flush()
 ```
 
