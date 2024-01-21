@@ -71,6 +71,9 @@ Http 2克服了http1.1的几个严重的缺点，大幅的提升让gRPC/dubbo等
 
 ![](http2.png)
 
+图中可以看出，golang http2在建立连接后，有一个独立的goroutine做readLoop，在读取完一个Frame后通过channel发送给主Loop goroutine，然后路由到对应的handler，此时开启一个新的handler goroutine
+处理业务，处理结果会暂时写入writer的buf中，随后通过channel发送给主Loop goroutine，完成实际的写入。可以粗略的认为http2的实现分别使用了read/write两个goroutine，handler则是每个请求一个goroutine。
+
 #### Http2入口
 可以看到http2的入口和http1.1的入口是一样的，都是通过server.ListenAndServe()来启动的。
 ```go
@@ -150,32 +153,38 @@ func (sc *http2serverConn) serve() {
 }
 ```
 sc.readFrames()在一个goroutine中循环读取帧，http2只需要一个goroutine就可以处理多个stream。
-实际http1.1使用多个conn + goroutine并发读写是相当低效的做法，并发读写不止不能够提高效率，反而会降低效率，
+实际http1.1使用多个conn + goroutine并发读写是相当低效的做法，并发读写不止不能够提高效率，反而会降低。
 
 ```g
 	for {
 		select {
+		case res := <-sc.readFrameCh:
+			sc.processFrameFromReader(res) 
+			    err = sc.processFrame(f)
+			        sc.processHeaders(f)
+			            //异步执行业务逻辑
+			            go sc.runHandler(rw, req, handler)
+			                handler(rw, req)
+			                rw.handlerDone()
+			                    w.Flush()
+			                        w.FlushError()
+			                            _, err = http2chunkWriter{rws}.Write(nil)
+			                                cw.rws.writeChunk(p)
+			                                    err = rws.conn.writeHeaders(rws.stream, &http2writeResHeaders{
+                                                    streamID:      rws.stream.id,
+                                                }
+                                                    sc.writeFrameFromHandler(http2FrameWriteRequest{})
+                                                        // 通过主线程可以写了
+                                                        sc.wantWriteFrameCh <- wr
 		case wr := <-sc.wantWriteFrameCh:
 			sc.writeFrame(wr)
 		case res := <-sc.wroteFrameCh:
-			sc.wroteFrame(res)
-		case res := <-sc.readFrameCh:
-			// Process any written frames before reading new frames from the client since a
-			// written frame could have triggered a new stream to be started.
-			if sc.writingFrameAsync {
-				select {
-				case wroteRes := <-sc.wroteFrameCh:
-					sc.wroteFrame(wroteRes)
-				default:
-				}
-			}
-			if !sc.processFrameFromReader(res) {
-				return
-			}
-			res.readMore()
-			if settingsTimer != nil {
-				settingsTimer.Stop()
-				settingsTimer = nil
-			}
+			sc.wroteFrame(res)                                               
 		}	
 ```
+
+sc.writeFrame(wr)主要是将写入的动作使用sc.writeSched.Push(wr)追加到写入队列中，然后触发一次sc.scheduleFrameWrite()
+sc.scheduleFrameWrite()会从sc.writeSched拉取写入请求，如果该请求可以写入到writer buf中，则直接在主goroutine中写入buffer，否则开启一个新的goroutine异步写入，因为该次写入很有可能是阻塞的。
+完成后触发一次wroteFrame
+sc.wroteFrame(res) sc.scheduleFrameWrite()写入完成后会触发一次sc.wroteFrame(res)，然后检查请求是否结束关闭stream，再触发一次sc.scheduleFrameWrite()
+
