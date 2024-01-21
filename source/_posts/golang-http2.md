@@ -188,3 +188,6 @@ sc.scheduleFrameWrite()会从sc.writeSched拉取写入请求，如果该请求�
 完成后触发一次wroteFrame
 sc.wroteFrame(res) sc.scheduleFrameWrite()写入完成后会触发一次sc.wroteFrame(res)，然后检查请求是否结束关闭stream，再触发一次sc.scheduleFrameWrite()
 
+至此，http2的解析就完成了，如果读者熟悉netty等框架会发现，似乎golang使用了多个goroutine并发读写多个tcp连接，而且读取和写入是同步阻塞的，这似乎与netty的一个或少数几个线程负责读写所有的tcp连接
+方式不同，golang似乎使一些goroutine资源白白等待，但事实并发如此，实际上....
+
