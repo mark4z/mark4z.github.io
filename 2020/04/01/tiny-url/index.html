@@ -1,0 +1,202 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>如何设计一个高性能的短链接系统 | Mark4z's blog</title><meta name="author" content="Mark4z Lv"><meta name="copyright" content="Mark4z Lv"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="背景做为刚转正的实习生，最后在PM的指导下设计了一款短链接系统，这里记录一下设计思路和实现细节。  设计思路短链接其实很简单，只要将长链接通过某种算法转换成短链接，然后通过短链接重定向到长链接即可。 设计思路很简单，直接使用一个接口&#x2F;create创建短链接，并在数据库中存储长链接和短链接的映射关系。另一个&#x2F;${hashcode}接口用于访问，通过短链接重定向到长链接。 创建短链">
+<meta property="og:type" content="article">
+<meta property="og:title" content="如何设计一个高性能的短链接系统">
+<meta property="og:url" content="http://mark4z.github.io/2020/04/01/tiny-url/index.html">
+<meta property="og:site_name" content="Mark4z&#39;s blog">
+<meta property="og:description" content="背景做为刚转正的实习生，最后在PM的指导下设计了一款短链接系统，这里记录一下设计思路和实现细节。  设计思路短链接其实很简单，只要将长链接通过某种算法转换成短链接，然后通过短链接重定向到长链接即可。 设计思路很简单，直接使用一个接口&#x2F;create创建短链接，并在数据库中存储长链接和短链接的映射关系。另一个&#x2F;${hashcode}接口用于访问，通过短链接重定向到长链接。 创建短链">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://mark4z.github.io/images/cat.jpg">
+<meta property="article:published_time" content="2020-04-01T06:05:46.000Z">
+<meta property="article:modified_time" content="2024-03-03T11:46:59.850Z">
+<meta property="article:author" content="Mark4z Lv">
+<meta property="article:tag" content="golang">
+<meta property="article:tag" content="tinyurl">
+<meta property="article:tag" content="hash">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://mark4z.github.io/images/cat.jpg"><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="http://mark4z.github.io/2020/04/01/tiny-url/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//www.clarity.ms"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css" media="print" onload="this.media='all'"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>(function(c,l,a,r,i,t,y){
+    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+    t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+})(window, document, "clarity", "script", "jmbjrr7tr2");</script><script>const GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: undefined,
+  localSearch: undefined,
+  translate: undefined,
+  noticeOutdate: undefined,
+  highlight: {"plugin":"highlighjs","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false},
+  copy: {
+    success: '复制成功',
+    error: '复制错误',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: undefined,
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  source: {
+    justifiedGallery: {
+      js: 'https://cdn.jsdelivr.net/npm/flickr-justified-gallery/dist/fjGallery.min.js',
+      css: 'https://cdn.jsdelivr.net/npm/flickr-justified-gallery/dist/fjGallery.min.css'
+    }
+  },
+  isPhotoFigcaption: false,
+  islazyload: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  }
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '如何设计一个高性能的短链接系统',
+  isPost: true,
+  isHome: false,
+  isHighlightShrink: false,
+  isToc: true,
+  postUpdate: '2024-03-03 19:46:59'
+}</script><noscript><style type="text/css">
+  #nav {
+    opacity: 1
+  }
+  .justified-gallery img {
+    opacity: 1
+  }
+
+  #recent-posts time,
+  #post-meta time {
+    display: inline !important
+  }
+</style></noscript><script>(win=>{
+    win.saveToLocal = {
+      set: function setWithExpiry(key, value, ttl) {
+        if (ttl === 0) return
+        const now = new Date()
+        const expiryDay = ttl * 86400000
+        const item = {
+          value: value,
+          expiry: now.getTime() + expiryDay,
+        }
+        localStorage.setItem(key, JSON.stringify(item))
+      },
+
+      get: function getWithExpiry(key) {
+        const itemStr = localStorage.getItem(key)
+
+        if (!itemStr) {
+          return undefined
+        }
+        const item = JSON.parse(itemStr)
+        const now = new Date()
+
+        if (now.getTime() > item.expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return item.value
+      }
+    }
+  
+    win.getScript = url => new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = url
+      script.async = true
+      script.onerror = reject
+      script.onload = script.onreadystatechange = function() {
+        const loadState = this.readyState
+        if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+        script.onload = script.onreadystatechange = null
+        resolve()
+      }
+      document.head.appendChild(script)
+    })
+  
+    win.getCSS = (url,id = false) => new Promise((resolve, reject) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = url
+      if (id) link.id = id
+      link.onerror = reject
+      link.onload = link.onreadystatechange = function() {
+        const loadState = this.readyState
+        if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+        link.onload = link.onreadystatechange = null
+        resolve()
+      }
+      document.head.appendChild(link)
+    })
+  
+      win.activateDarkMode = function () {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      win.activateLightMode = function () {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+      const t = saveToLocal.get('theme')
+    
+          if (t === 'dark') activateDarkMode()
+          else if (t === 'light') activateLightMode()
+        
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        if (asideStatus === 'hide') {
+          document.documentElement.classList.add('hide-aside')
+        } else {
+          document.documentElement.classList.remove('hide-aside')
+        }
+      }
+    
+    const detectApple = () => {
+      if(/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)){
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+    })(window)</script><meta name="generator" content="Hexo 6.3.0"></head><body><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img is-center"><img src="https://i.loli.net/2021/02/24/5O1day2nriDzjSu.png" onerror="onerror=null;src='/img/friend_404.gif'" alt="avatar"/></div><div class="sidebar-site-data site-data is-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">7</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">21</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">0</div></a></div><hr/><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> Home</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> Archives</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> Tags</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> Categories</span></a></div><div class="menus_item"><a class="site-page group" href="javascript:void(0);"><i class="fa-fw fas fa-list"></i><span> List</span><i class="fas fa-chevron-down"></i></a><ul class="menus_item_child"><li><a class="site-page child" href="/music/"><i class="fa-fw fas fa-music"></i><span> Music</span></a></li><li><a class="site-page child" href="/movies/"><i class="fa-fw fas fa-video"></i><span> Movie</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> Link</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> About</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url('/images/cat.jpg')"><nav id="nav"><span id="blog-info"><a href="/" title="Mark4z's blog"><span class="site-name">Mark4z's blog</span></a></span><div id="menus"><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> Home</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> Archives</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> Tags</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> Categories</span></a></div><div class="menus_item"><a class="site-page group" href="javascript:void(0);"><i class="fa-fw fas fa-list"></i><span> List</span><i class="fas fa-chevron-down"></i></a><ul class="menus_item_child"><li><a class="site-page child" href="/music/"><i class="fa-fw fas fa-music"></i><span> Music</span></a></li><li><a class="site-page child" href="/movies/"><i class="fa-fw fas fa-video"></i><span> Movie</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> Link</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> About</span></a></div></div><div id="toggle-menu"><a class="site-page" href="javascript:void(0);"><i class="fas fa-bars fa-fw"></i></a></div></div></nav><div id="post-info"><h1 class="post-title">如何设计一个高性能的短链接系统</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2020-04-01T06:05:46.000Z" title="发表于 2020-04-01 14:05:46">2020-04-01</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2024-03-03T11:46:59.850Z" title="更新于 2024-03-03 19:46:59">2024-03-03</time></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title="如何设计一个高性能的短链接系统"><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">阅读量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="post-content" id="article-container"><h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>做为刚转正的实习生，最后在PM的指导下设计了一款短链接系统，这里记录一下设计思路和实现细节。</p>
+<p><img src="/2020/04/01/tiny-url/tiny-url.png"></p>
+<h2 id="设计思路"><a href="#设计思路" class="headerlink" title="设计思路"></a>设计思路</h2><p>短链接其实很简单，只要将长链接通过某种算法转换成短链接，然后通过短链接重定向到长链接即可。</p>
+<p>设计思路很简单，直接使用一个接口&#x2F;create创建短链接，并在数据库中存储长链接和短链接的映射关系。<br>另一个&#x2F;${hashcode}接口用于访问，通过短链接重定向到长链接。</p>
+<h3 id="创建短链接"><a href="#创建短链接" class="headerlink" title="创建短链接"></a>创建短链接</h3><p>创建短链接的接口很简单，直接将长链接转换6位短链接，直接插入并使用数据库唯一键约束，如果短链接已经存在，则对比长链接是否一致，一致返回即可，<br>不一致则是发生了碰撞。在长链接后拼接随机字符即可（入库的还是原链接）。</p>
+<p>考虑到刚创建的链接可能会被频繁访问，所以我们在创建链接的时候就将短链接放入Redis缓存中,并设置缓存时间为有效期，这样可以减少数据库的访问。</p>
+<h4 id="数据库字段："><a href="#数据库字段：" class="headerlink" title="数据库字段："></a>数据库字段：</h4><ul>
+<li>long_url: 长链接</li>
+<li>tiny_url: 短链接</li>
+<li>create_time: 创建时间</li>
+<li>update_time: 更新时间</li>
+<li>status: 状态</li>
+</ul>
+<h4 id="短链接生成算法"><a href="#短链接生成算法" class="headerlink" title="短链接生成算法"></a>短链接生成算法</h4><p>对于短链接生成算法，可以使用数据库id自增或者雪花算法，也可以使用hash算法，将长链接转换成hash值，然后再将hash值转换成62进制的字符串。<br>前者的优点是简单而且性能高，但是保密性不好，因为用户可以通过递增的方式遍历所有的短链接。<br>后者的优点是随机性好但性能略差，而且有可能发生hash碰撞。</p>
+<p>这里我们选择hash算法，毕竟马上就会被用于不记名发奖，要是被人遍历出来偷走奖品就完蛋了。</p>
+<p>1.MD5算法，MD5算法是最常见的hash算法，随机性好<br>2.SHA1算法，对于长度小于2^64位的消息，SHA1会产生一个160位的消息摘要<br>3.MurmurHash算法，MurmurHash是一种非加密型哈希函数，适用于一般的哈希检索操作，对于规律性分布强的key，MurmurHash的随机分布特征表现更良好。</p>
+<p>最终我们选择了MurmurHash算法，因为短链接的规律性，使用MurmurHash的碰撞几率要小很多，而且对于短链接场景性能更好。</p>
+<h4 id="短链接位数选择"><a href="#短链接位数选择" class="headerlink" title="短链接位数选择"></a>短链接位数选择</h4><p>根据业务需求，观察现有分享链接的qps，我们选择预留5年的容量约5亿，6位短链接，这样可以支持62^6&#x3D;568亿个链接，基本够用了。<br>MurmurHash3可以生成32位&#x2F;128位的hash值，我们选择32位的hash值，然后再将32位的hash值转换成62进制的字符串，这样其实浪费了一些空间（32位只有43亿），但是为了简单，我们选择了这种方式。</p>
+<p>转换方式如下所示：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"><span class="keyword">var</span> base_62 = <span class="string">&quot;0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">hashToTinyURL</span><span class="params">(hash <span class="type">uint32</span>)</span></span> <span class="type">string</span> &#123;</span><br><span class="line">    <span class="keyword">var</span> result <span class="type">string</span></span><br><span class="line">    <span class="keyword">for</span> hash &gt; <span class="number">0</span> &#123;</span><br><span class="line">        result = <span class="type">string</span>(base_62[hash%<span class="number">62</span>]) + result</span><br><span class="line">        hash = hash / <span class="number">62</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> result</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="访问短链接"><a href="#访问短链接" class="headerlink" title="访问短链接"></a>访问短链接</h3><p>访问短链接的接口也很简单，直接通过短链接查询Redis，然后重定向到长链接即可（Redis中不存在可直接返回404，因为缓存失效后有效期也失效了）。</p>
+<h2 id="性能优化"><a href="#性能优化" class="headerlink" title="性能优化"></a>性能优化</h2><p>以上方案做为一个小型的短链接系统已经足够了，但是为了更好的性能，我们还可以做一些优化。</p>
+<h3 id="服务拆分"><a href="#服务拆分" class="headerlink" title="服务拆分"></a>服务拆分</h3><p>短链接是非常极端的读多写少场景，将创建短链接和访问短链接的接口拆分成两个服务，访问短链接的服务可以使用golang实现，可以通过k8s的策略快速拉起和节省内存（JAVA启动和预热也太慢了）。</p>
+<h3 id="缓存优化"><a href="#缓存优化" class="headerlink" title="缓存优化"></a>缓存优化</h3><p>为了避免访问服务查询数据库，我们选择了将短链接的整个生命周期放入缓存，但是这样会导致缓存的数据量过大，16G的节点只能存储0.5kb*32m个key。<br>怎么办呢，只能降低缓存的时间，当缓存过期时，访问创建服务提供的接口查询数据库并刷新缓存。</p>
+<h3 id="数据库优化"><a href="#数据库优化" class="headerlink" title="数据库优化"></a>数据库优化</h3><p>1.分表 对于43亿的预估数据量，一共分为63张表，每张表大约有7千万的数据量，这样可以保证单表的查询&#x2F;插入性能，分表键为hashcode。<br>同时，要有后台任务及时将过期数据迁移到历史库中，这样可以保证数据库的性能。</p>
+<h3 id="布隆过滤器"><a href="#布隆过滤器" class="headerlink" title="布隆过滤器"></a>布隆过滤器</h3><p>还有没有更大的优化空间呢？当然有，那就是布隆过滤器。</p>
+<p>布隆过滤器是一种数据结构，对于给定的数据集合，它可以告诉你这个数据是否一定不存在，或者可能存在。布隆过滤器的核心是一个位数组和多个hash函数，当一个元素被加入集合时，通过多个hash函数将这个元素映射成位数组中的多个点，查询时通过多个hash函数将查询元素映射成位数组中的多个点，如果所有的点都是1，则说明这个元素可能存在，如果有一个点是0，则说明这个元素一定不存在。</p>
+<p>在这里访问数据库有两种场景：<br>其一是创建时的短链接冲突，由于创建服务qps较低，所以可以直接访问数据库，并且将短链接放入布隆过滤器。<br>其二是访问短链接，这个场景的qps较高，所以访问短链接时先查缓存，缓存不存在时查询布隆过滤器，如果不存在直接返回404，如果存在再查询数据库。</p>
+<h4 id="布隆过滤器的选型"><a href="#布隆过滤器的选型" class="headerlink" title="布隆过滤器的选型"></a>布隆过滤器的选型</h4><p>布隆过滤器的选型有很多，比如guava的布隆过滤器，但是guava的布隆过滤器是单机的，我们选择了Redis的布隆过滤器，因为我们的系统是分布式的，而且Redis的布隆过滤器是原生支持的(2019发布的<a target="_blank" rel="noopener" href="https://redis.io/docs/data-types/probabilistic/bloom-filter/">RedisBloom</a>)。</p>
+<h4 id="布隆过滤器的参数选择"><a href="#布隆过滤器的参数选择" class="headerlink" title="布隆过滤器的参数选择"></a>布隆过滤器的参数选择</h4><p>在这里我们直接使用redisBloom创建，误差率为0.001，容量为1亿，实测占用内存约为200M，并且redisBloom支持动态扩容（倍增式扩容&#x2F;O(k)级性能开销），所以不用担心容量不够或误判率上升。<br>最后，考虑到redis的高可用，我们需要给redis访问和写入做降级服务，且在redis数据丢失或系统长期运行redisBloom容量增加但是大部分都是过期key的情况下，需要有后台任务定期重建布隆过滤器。</p>
+<p>这样，我们的短链接系统就设计完了。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">文章作者: </span><span class="post-copyright-info"><a href="http://mark4z.github.io">Mark4z Lv</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">文章链接: </span><span class="post-copyright-info"><a href="http://mark4z.github.io/2020/04/01/tiny-url/">http://mark4z.github.io/2020/04/01/tiny-url/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来自 <a href="http://mark4z.github.io" target="_blank">Mark4z's blog</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/golang/">golang</a><a class="post-meta__tags" href="/tags/tinyurl/">tinyurl</a><a class="post-meta__tags" href="/tags/hash/">hash</a></div><div class="post_share"><div class="social-share" data-image="/images/cat.jpg" data-sites="facebook,twitter,wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><div class="prev-post pull-full"><a href="/2023/04/02/nginx-http2/" title="谈谈Http2-为什么nginx在http2下的表现远弱于http1.1"><img class="cover" src="/images/cat.jpg" onerror="onerror=null;src='/img/404.jpg'" alt="cover of previous post"><div class="pagination-info"><div class="label">上一篇</div><div class="prev_info">谈谈Http2-为什么nginx在http2下的表现远弱于http1.1</div></div></a></div></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><div><a href="/2024/01/01/golang-http2/" title="golang 1.20 http2源码解读"><img class="cover" src="/images/cat.jpg" alt="cover"><div class="content is-center"><div class="date"><i class="far fa-calendar-alt fa-fw"></i> 2024-01-01</div><div class="title">golang 1.20 http2源码解读</div></div></a></div></div></div></div><div class="aside-content" id="aside-content"><div class="card-widget card-info"><div class="is-center"><div class="avatar-img"><img src="https://i.loli.net/2021/02/24/5O1day2nriDzjSu.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="author-info__name">Mark4z Lv</div><div class="author-info__description"></div></div><div class="card-info-data site-data is-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">7</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">21</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">0</div></a></div><a id="card-info-btn" target="_blank" rel="noopener" href="https://github.com/mark4z"><i class="fab fa-github"></i><span>Follow Me</span></a><div class="card-info-social-icons is-center"><a class="social-icon" href="https://github.com/mark4z" target="_blank" title="Github"><i class="fab fa-github"></i></a><a class="social-icon" href="mailto:mark4z@apache.org" target="_blank" title="Email"><i class="fas fa-envelope"></i></a></div></div><div class="card-widget card-announcement"><div class="item-headline"><i class="fas fa-bullhorn fa-shake"></i><span>公告</span></div><div class="announcement_content">This is my Blog</div></div><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%83%8C%E6%99%AF"><span class="toc-number">1.</span> <span class="toc-text">背景</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AE%BE%E8%AE%A1%E6%80%9D%E8%B7%AF"><span class="toc-number">2.</span> <span class="toc-text">设计思路</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%9B%E5%BB%BA%E7%9F%AD%E9%93%BE%E6%8E%A5"><span class="toc-number">2.1.</span> <span class="toc-text">创建短链接</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E5%BA%93%E5%AD%97%E6%AE%B5%EF%BC%9A"><span class="toc-number">2.1.1.</span> <span class="toc-text">数据库字段：</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%9F%AD%E9%93%BE%E6%8E%A5%E7%94%9F%E6%88%90%E7%AE%97%E6%B3%95"><span class="toc-number">2.1.2.</span> <span class="toc-text">短链接生成算法</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%9F%AD%E9%93%BE%E6%8E%A5%E4%BD%8D%E6%95%B0%E9%80%89%E6%8B%A9"><span class="toc-number">2.1.3.</span> <span class="toc-text">短链接位数选择</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%BF%E9%97%AE%E7%9F%AD%E9%93%BE%E6%8E%A5"><span class="toc-number">2.2.</span> <span class="toc-text">访问短链接</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96"><span class="toc-number">3.</span> <span class="toc-text">性能优化</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%8D%E5%8A%A1%E6%8B%86%E5%88%86"><span class="toc-number">3.1.</span> <span class="toc-text">服务拆分</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E4%BC%98%E5%8C%96"><span class="toc-number">3.2.</span> <span class="toc-text">缓存优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E5%BA%93%E4%BC%98%E5%8C%96"><span class="toc-number">3.3.</span> <span class="toc-text">数据库优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8"><span class="toc-number">3.4.</span> <span class="toc-text">布隆过滤器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8%E7%9A%84%E9%80%89%E5%9E%8B"><span class="toc-number">3.4.1.</span> <span class="toc-text">布隆过滤器的选型</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8%E7%9A%84%E5%8F%82%E6%95%B0%E9%80%89%E6%8B%A9"><span class="toc-number">3.4.2.</span> <span class="toc-text">布隆过滤器的参数选择</span></a></li></ol></li></ol></li></ol></div></div><div class="card-widget card-recent-post"><div class="item-headline"><i class="fas fa-history"></i><span>最新文章</span></div><div class="aside-list"><div class="aside-list-item"><a class="thumbnail" href="/2024/02/13/elasticsearch-tips/" title="记ElasticSearch的一个有趣的性能问题"><img src="/images/cat.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="记ElasticSearch的一个有趣的性能问题"/></a><div class="content"><a class="title" href="/2024/02/13/elasticsearch-tips/" title="记ElasticSearch的一个有趣的性能问题">记ElasticSearch的一个有趣的性能问题</a><time datetime="2024-02-13T06:05:46.000Z" title="发表于 2024-02-13 14:05:46">2024-02-13</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2024/01/01/golang-http2/" title="golang 1.20 http2源码解读"><img src="/images/cat.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="golang 1.20 http2源码解读"/></a><div class="content"><a class="title" href="/2024/01/01/golang-http2/" title="golang 1.20 http2源码解读">golang 1.20 http2源码解读</a><time datetime="2024-01-01T06:05:46.000Z" title="发表于 2024-01-01 14:05:46">2024-01-01</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2023/05/07/xv6-riscv-book/" title="unix-like操作系统 xv6-riscv"><img src="/images/cat.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="unix-like操作系统 xv6-riscv"/></a><div class="content"><a class="title" href="/2023/05/07/xv6-riscv-book/" title="unix-like操作系统 xv6-riscv">unix-like操作系统 xv6-riscv</a><time datetime="2023-05-07T08:29:33.000Z" title="发表于 2023-05-07 16:29:33">2023-05-07</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2023/05/05/linux-thread/" title="Linux v5.19 risc-v 进程/线程调度汇编级源码解读"><img src="/images/linux.jpeg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="Linux v5.19 risc-v 进程/线程调度汇编级源码解读"/></a><div class="content"><a class="title" href="/2023/05/05/linux-thread/" title="Linux v5.19 risc-v 进程/线程调度汇编级源码解读">Linux v5.19 risc-v 进程/线程调度汇编级源码解读</a><time datetime="2023-05-05T15:29:44.000Z" title="发表于 2023-05-05 23:29:44">2023-05-05</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2023/04/02/Journaling%20the%20Linux%20ext2fs%20Filesystem/" title="Journaling the Linux ext2fs Filesystem"><img src="/images/cat.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="Journaling the Linux ext2fs Filesystem"/></a><div class="content"><a class="title" href="/2023/04/02/Journaling%20the%20Linux%20ext2fs%20Filesystem/" title="Journaling the Linux ext2fs Filesystem">Journaling the Linux ext2fs Filesystem</a><time datetime="2023-04-02T06:05:46.000Z" title="发表于 2023-04-02 14:05:46">2023-04-02</time></div></div></div></div></div></div></main><footer id="footer"><div id="footer-wrap"><div class="copyright">&copy;2020 - 2024 By Mark4z Lv</div><div class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly</a></div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><button id="darkmode" type="button" title="浅色和深色模式转换"><i class="fas fa-adjust"></i></button><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside_config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"></div><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script></div></body></html>
